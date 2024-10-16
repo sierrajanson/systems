@@ -12,12 +12,22 @@ int fatal_error(const char *message){
 
 
 int main(int argc, char **argv) {
-// program input
-    char user_input[4];
-    int res = scanf(" %s", user_input);
+	char user_c;
+	char user_input[4];
+	int user_count = 0;
+	int user_success = 0;
+	
+	while(user_count < 4 && read(STDIN_FILENO, &user_c, 1) > 0){
+		if (user_c == '\n'){
+			user_success = 1;
+			break;
+			// check if there's stuff after
+		}
+		user_input[user_count] = user_c;	
+		user_count++;
+	}
+	if (user_success != 1) fatal_error("Invalid Command\n");
 
-    // parse input
-    if (res <= 0) fatal_error("Invalid Command\n");
     if (strncmp(user_input, "set",3) == 0) { // set --> set\n<location>\n<content_length>\n<contents>
 	// initialize FILENAME
 	char filename[PATH_MAX]; // dynamically allocate
@@ -32,20 +42,34 @@ int main(int argc, char **argv) {
 
 	// create or open file
 	// does this check for directories?? !!
-        int fd = open(filename, O_CREAT | O_WRONLY, S_IRWXU | S_IRGRP);
+        int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
         if (fd == -1) fatal_error("Invalid Command\n");
 
 	// initialize FILELENGTH
 	int length = 0;
         res = scanf("%d", &length);
     	if (res <= 0) fatal_error("Invalid Command\n");
-	
-        char buffer[4096];
-        res = scanf(" %[^\0]", buffer);
-    	if (res <= 0) fatal_error("Invalid Command\n");
+	if (length == 0) {
+		write(STDOUT_FILENO, "OK\n",3);
+        	close(fd);
+		exit(0);
+	}
+	// CHANGE TO 10 MB
+        char buffer[PATH_MAX];
+	char c;
+	int count = 0;
+	while(count < PATH_MAX && read(STDIN_FILENO, &c, 1) > 0){
+		if (c == '\n'){
+			user_success = 1;
+			break;
+			// check if there's stuff after
+		}
+		buffer[count] = c;	
+		count++;
+	}
+	// append null terminator??
 	
 	int msg_len = strlen(buffer);
-        
 	// partial write	
 	if (length < msg_len){
 		// may need to append null terminator
@@ -76,10 +100,10 @@ int main(int argc, char **argv) {
 	// checks --> if filename is too long
 	//        --> if filename is not terminated by a newline character
 	//        --> if filename is termiated by \n but there is still following
-	char c;
 	char filename[PATH_MAX];
 	int count = 0;
 	int success = 0;
+	char c;
 	while(count < PATH_MAX && read(STDIN_FILENO, &c, 1) > 0){
 		if (c == '\n'){
 			success = 1;
@@ -91,20 +115,12 @@ int main(int argc, char **argv) {
 	}
 	// no \n, or filename too long
 	if (success != 1) fatal_error("Invalid Command\n");
-	// command should end in a newline?
-	printf("%s\n",filename);
-	char *txt = strstr(filename, "\n");
-	if (txt == NULL) fatal_error("Invalid Command\n");
 	
-	if (res<=0) fatal_error("Invalid Command\n");
-	
-	int fd = open(filename, O_RDONLY, 0);
+	int fd = open(filename, O_RDONLY, 0);	
 	
 	// may not exceed 10,000,000 bytes
-        // check to see if there's extra info included in command !!
-        char buffer[4096];
-
         if (fd == -1) fatal_error("Invalid Command\n");
+        char buffer[4096];
 
         ssize_t bytes = 0;
         while ((bytes = read(fd, buffer, 16)) > 0) {
