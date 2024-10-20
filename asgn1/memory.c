@@ -33,7 +33,6 @@ int read_value(int max, char *value) {
 int main(int argc, char **argv) {
     char user_input[4];
     read_value(4, user_input);
-    //printf("command:%s\n",user_input);
     if (strncmp(user_input, "set", 3)
         == 0) { // set --> set\n<location>\n<content_length>\n<contents>
         // initialize FILENAME
@@ -42,19 +41,9 @@ int main(int argc, char **argv) {
         int res = read_value(PATH_MAX, filename);
         assert(res < 4096);
         filename[res] = '\0';
-        //printf("got to filename\n");
-        // check for valid text file
-        /*char *txt = strstr(filename, ".txt"); // <-- MAKE SURE .dat or .txt
-        char *dat = strstr(filename, ".dat");
-	if (txt == NULL && dat == NULL)
-            fatal_error("Invalid Command\n");
-        */
-        // create or open file
-        // does this check for directories?? !!
         int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
         if (fd == -1)
             fatal_error("Invalid Command\n");
-        //printf("opened file\n");
         // initialize FILELENGTH
         int maxlen = 12; // max length of string length
         char str_length[maxlen]; // str(len)
@@ -69,10 +58,11 @@ int main(int argc, char **argv) {
         // ---------------------------------------------------------------//
         while ((bytes_read = read(STDIN_FILENO, buffer, PATH_MAX)) > 0) {
             ssize_t bytes_written = 0;
-            while (bytes_written < bytes_read) {
+            // writing the bytes
+		while (bytes_written < bytes_read) {
                 ssize_t result = write(fd, buffer + bytes_written, bytes_read - bytes_written);
-                if (result < 0)
-                    fatal_error("Operation Failed\n");
+                // error message
+		if (result < 0) fatal_error("Operation Failed\n");
                 bytes_written += result;
             }
         }
@@ -112,10 +102,12 @@ int main(int argc, char **argv) {
         ssize_t bytes_read = 0;
         while ((bytes_read = read(fd, buffer, PATH_MAX)) > 0) {
             ssize_t bytes_written = 0;
+		// writing the bytes
             while (bytes_written < bytes_read) {
                 ssize_t result
                     = write(STDOUT_FILENO, buffer + bytes_written, bytes_read - bytes_written);
-                if (result < 0)
+                // operation failed
+		if (result < 0)
                     fatal_error("Operation Failed\n");
                 bytes_written += result;
             }
