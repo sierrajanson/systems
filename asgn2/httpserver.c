@@ -21,8 +21,11 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
+#include <regex.h>
 #define BUFFER_SIZE 4096
+#define LENGTH_REGEX "([0-9]{1,128})"
+#define END_REGEX "\r\n(*{100})" // change later!!!
+#define EXTEND_REGEX HEADER_FIELD_REGEX END_REGEX
 
 /** @brief Handles a connection from a client.
  *
@@ -113,6 +116,27 @@ int put(int connfd, const char *filename, const char *message){
 }
 
 
+void match_pattern(const char *buffer, char *substring, const char *pattern,int size){
+    // check for patterns
+    regex_t preg;
+    int rc = 0;
+    size_t nmatch = 8;
+    regmatch_t pmatch[8];
+    regoff_t len;
+    const char *s = buffer;
+    	
+    if (0 != (rc = regcomp(&preg,pattern,REG_EXTENDED))){
+	printf("Failure\n");
+    }	    
+    if (0 != (rc = regexec(&preg, s, nmatch, pmatch, 0))) {
+   	printf("Failed to match '%s' with '%s',returning %d.\n",buffer, METHOD_REGEX, rc);
+    }
+    len = pmatch[0].rm_eo - pmatch[0].rm_so;
+    
+    printf("substring = \"%.*s\"\n",len,s+pmatch[0].rm_so);	
+    snprintf(substring, size,"%.*s",len, s+pmatch[0].rm_so);
+	// return NULL upon failure, substring upon success
+}
 
 void handle_connection(int connfd) {
     char buffer[2049];
@@ -122,14 +146,47 @@ void handle_connection(int connfd) {
         return; 
     } // maybe don't exit with error
     buffer[res] = '\0';
+    
+    // check for big format above
+  
+    char command[8];
+    match_pattern(buffer,command,METHOD_REGEX,8);
+    printf("COMMAND: %s\n",command);
+    // must do error handling
+    // if the command is GET or PUT there are different protocols
+    char uri[64];
+    match_pattern(buffer, uri, URI_REGEX, 64);
+    printf("URI: %s\n", uri);  
+    
+    if (strncmp(command, "GET", 3) == 0){
+    } else if (strncmp(command, "PUT", 3) == 0){
+	char holder[258];	
+        match_pattern(buffer, holder, HEADER_FIELD_REGEX, 128);
+        printf("HOLDeR: %s\n",holder); 
+	char value[128];
+        match_pattern(holder, value, LENGTH_REGEX, 128);
+	int length = atoi(value);
+	printf("MESSAGE LEN: %d\n",length);
+
+	char holder2[1000];
+	match_pattern(buffer, holder2, EXTEND_REGEX, 1000);	
+	char message[length];
+        printf("--------------------------\n");
+        match_pattern(buffer, message, END_REGEX, length+4);
+        printf("--------------------------\n");
+	printf("MESSAGE:%s\n",message);
+
+    } else {
+	printf("Command did not match either GET or PUT\n.");
+    }
+
+    
     //int result = put(connfd, "happy.txt", "new");
-    int result = get(connfd, "hoppy.txt");
-    if (result == -1) printf("Error\n");
-    if (result == 0) printf("Success\n");
+    //int result = get(connfd, "hoppy.txt");
+    //if (result == -1) printf("Error\n");
+    //if (result == 0) printf("Success\n");
     close(connfd);
 }
-
-
 
 /** @brief Main function for the HTTP server.
  *
