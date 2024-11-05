@@ -24,7 +24,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <regex.h>
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE  4096
 #define LENGTH_REGEX "Length: ([0-9]+{1,128})"
 //#define END_REGEX "\r\n(*{100})" // change later!!!
 //#define EXTEND_REGEX HEADER_FIELD_REGEX END_REGEX
@@ -54,7 +54,6 @@ void send_response(int soc, int status_code) {
         "Supported\n";
         break;
     }
-
     if (buf) {
         if (write_n_bytes(soc, buf, strlen(buf)) == -1) {
             fprintf(stderr, "Error sending response code %d\n", status_code);
@@ -251,12 +250,12 @@ void handle_connection(int connfd) {
         char value[128];
         //printf("holder: %s\n-----------\n", holder);
         int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
-	//printf("index:--%d--, character--%c%c%c%chmm%c--", p, buffer[p], buffer[p+1],buffer[p+2],buffer[p+3],buffer[p+4]);
-	//printf("value: ------- %s\n---------------\n",value);
-        int length = atoi(value+8);
-        
-	//printf("MESSAGE LEN: %d\n", length);
-	
+        //printf("index:--%d--, character--%c%c%c%chmm%c--", p, buffer[p], buffer[p+1],buffer[p+2],buffer[p+3],buffer[p+4]);
+        //printf("value: ------- %s\n---------------\n",value);
+        int length = atoi(value + 8);
+
+        //printf("MESSAGE LEN: %d\n", length);
+
         int message_pointer = p + 4;
         int code = handle_filename(connfd, uri + 1);
         char *filename = uri + 1;
@@ -281,59 +280,9 @@ void handle_connection(int connfd) {
             }
         }
 
-        //int bytes_read = 0;
-        /*
-        char buffer_remainder[strlen(buffer) - message_pointer]; // mp is 0-indexed
-        //printf("size of buffer: %d\n",(int)strlen(buffer));
-        printf("diff%lu\n", strlen(buffer) - message_pointer);
-        for (int i = message_pointer; i < (int) strlen(buffer); i++) {
-            buffer_remainder[i - message_pointer] = buffer[i];
-        }
-        buffer_remainder[strlen(buffer)] = '\0';
-        //printf("size of remainder:%lu\n", strlen(buffer_remainder));
-        ssize_t bytes_written = 0;
-        int HARDCODE = 2;
-	
-        while (bytes_written < (int) strlen(buffer_remainder) - HARDCODE) {
-            ssize_t result = write(fd, buffer_remainder + bytes_written,
-                strlen(buffer_remainder) - bytes_written - HARDCODE);
-            bytes_written += result;
-            printf("are you getting stuck?\n");
-        }
-        printf("in btwn\n");*/
-        //pass_n_bytes(connfd,fd,length);
-        // ---------------------------------------------------------------//
-        // READING IN MESSAGE CONTENT ------------------------------------//
-        // ---------------------------------------------------------------//
-        //char newBuffer[2049];
-        //printf("hello\n");
-        //bytes_read = read(connfd, newBuffer, 1);
-        /*while ((bytes_read = read(connfd, buffer, PATH_MAX)) > 0) {
-            bytes_written = 0;
-            printf("reading in message content\n");
-            // writing the bytes
-            while (bytes_written < bytes_read) {
-                ssize_t result = write(fd, buffer + bytes_written, bytes_read - bytes_written);
-                printf("bytes written:%d\n", (int) result);
-                // error message
-                if (result < 0) {
-                    send_response(connfd, 500);
-                    return;
-                }
-                bytes_written += result;
-            }
-            printf("stuck here??\n");
-        }if (bytes_read == 0) {
- 	   // Connection closed cleanly; exit the loop
-	      printf("End of data received.\n");
-	} else if (bytes_read < 0) {
-  	  perror("read error");
-  	  send_response(connfd, 500);
-    	return;
-	}*/
-        //printf("sending code??\n");
+        printf("sending code??  %d\n", code);
         send_response(connfd, code);
-        //printf("reutnring..\n");
+        printf("reutnring..\n");
         close(fd);
         return;
 
