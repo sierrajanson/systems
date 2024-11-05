@@ -24,8 +24,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <regex.h>
-#define BUFFER_SIZE  4096
-#define LENGTH_REGEX "([0-9]+{1,128})"
+#define BUFFER_SIZE 4096
+#define LENGTH_REGEX "Length: ([0-9]+{1,128})"
 //#define END_REGEX "\r\n(*{100})" // change later!!!
 //#define EXTEND_REGEX HEADER_FIELD_REGEX END_REGEX
 
@@ -99,14 +99,13 @@ int get(int connfd, const char *filename) {
     if (res == -1) {
         send_response(connfd, 500);
         close(fd);
-        return 1; // Error occurred
+        return -1; // Error occurred
     }
     char buffer[PATH_MAX];
     ssize_t bytes_read = 0;
-	
 
     // write away rest of buffer then start afresh i guess
-	
+
     while ((bytes_read = read(fd, buffer, PATH_MAX)) > 0) {
         ssize_t bytes_written = 0;
         // writing the bytes
@@ -190,8 +189,7 @@ regoff_t match_pattern(const char *buffer, char *substring, const char *pattern,
     return pmatch[0].rm_eo; // Return the end offset of the match
 }
 
-
-int handle_filename(int connfd, const char *filename){
+int handle_filename(int connfd, const char *filename) {
     if (!filename) {
         fprintf(stderr, "Filename or message is NULL\n");
         return -1;
@@ -204,20 +202,20 @@ int handle_filename(int connfd, const char *filename){
         code = 200;
         fclose(f);
     }
-    (void) code; 
+    return code;
     printf("move file code\n");
     int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
     if (fd == -1) {
         send_response(connfd, 500);
-	return -1;
-	}
+        return -1;
+    }
     return fd;
 }
 
 void handle_connection(int connfd) {
     int BUFF_SIZE = 2049;
     char buffer[BUFF_SIZE];
-    ssize_t res = read_until(connfd, buffer, BUFF_SIZE-1, "");
+    ssize_t res = read_until(connfd, buffer, BUFF_SIZE - 1, "");
 
     if (res == -1) {
         send_response(connfd, 500);
@@ -236,58 +234,108 @@ void handle_connection(int connfd) {
         send_response(connfd, 500);
         return;
     }
-    
+
     // GET
     if (strncmp(command, "GET", 3) == 0) {
         get(connfd, uri + 1);
-    } 
+    }
     // PUT
     else if (strncmp(command, "PUT", 3) == 0) {
-        
-	// write rest of bytes from og buffer into file
-	// then create new buffer
 
-        char holder[258];
-        int p = match_pattern(buffer, holder, HEADER_FIELD_REGEX, 128);
+        // write rest of bytes from og buffer into file
+        // then create new buffer
+
+        //char holder[258];
+        //printf("buffer: %s\n----------\n", buffer);
+        //int p = match_pattern(buffer, holder, HEADER_FIELD_REGEX, 128);
         char value[128];
-        match_pattern(holder, value, LENGTH_REGEX, 128);
-        int length = atoi(value);
-        printf("MESSAGE LEN: %d\n", length);
+        //printf("holder: %s\n-----------\n", holder);
+        int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
+	//printf("index:--%d--, character--%c%c%c%chmm%c--", p, buffer[p], buffer[p+1],buffer[p+2],buffer[p+3],buffer[p+4]);
+	//printf("value: ------- %s\n---------------\n",value);
+        int length = atoi(value+8);
+        
+	//printf("MESSAGE LEN: %d\n", length);
 	
-	int message_pointer = p + 2;
-        int fd = handle_filename(connfd, uri+1);
-        if (fd == -1) return;
-        int bytes_read = 0;
+        int message_pointer = p + 4;
+        int code = handle_filename(connfd, uri + 1);
+        char *filename = uri + 1;
+        int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
+        if (fd == -1) {
+            send_response(connfd, 500);
+            return;
+        }
 
-        char buffer_remainder[strlen(buffer)-message_pointer]; // mp is 0-indexed 
+        int remainder = strlen(buffer) - message_pointer;
+        ssize_t res = write_n_bytes(fd, buffer + message_pointer, remainder);
+        if (res == -1) {
+            send_response(connfd, 500);
+            return;
+        }
+
+        if (length - remainder > 0) {
+            res = pass_n_bytes(connfd, fd, length - remainder);
+            if (res == -1) {
+                send_response(connfd, 500);
+                return;
+            }
+        }
+
+        //int bytes_read = 0;
+        /*
+        char buffer_remainder[strlen(buffer) - message_pointer]; // mp is 0-indexed
         //printf("size of buffer: %d\n",(int)strlen(buffer));
-	printf("diff%lu\n",strlen(buffer)-message_pointer);
-        for (int i = message_pointer; i < (int)strlen(buffer); i++){
-              buffer_remainder[i-message_pointer] = buffer[i];		
+        printf("diff%lu\n", strlen(buffer) - message_pointer);
+        for (int i = message_pointer; i < (int) strlen(buffer); i++) {
+            buffer_remainder[i - message_pointer] = buffer[i];
         }
-        //buffer_remainder[strlen(buffer)] = '\0';
-        printf("size of remainder:%lu\n",strlen(buffer_remainder)); 
-        ssize_t bytes_written = 0; 
-	int HARDCODE = 2; 
-        while (bytes_written < (int)strlen(buffer_remainder)-HARDCODE){
-                ssize_t result = write(fd,buffer_remainder + bytes_written, strlen(buffer_remainder) - bytes_written-HARDCODE);
-		bytes_written += result;
+        buffer_remainder[strlen(buffer)] = '\0';
+        //printf("size of remainder:%lu\n", strlen(buffer_remainder));
+        ssize_t bytes_written = 0;
+        int HARDCODE = 2;
+	
+        while (bytes_written < (int) strlen(buffer_remainder) - HARDCODE) {
+            ssize_t result = write(fd, buffer_remainder + bytes_written,
+                strlen(buffer_remainder) - bytes_written - HARDCODE);
+            bytes_written += result;
+            printf("are you getting stuck?\n");
         }
+        printf("in btwn\n");*/
+        //pass_n_bytes(connfd,fd,length);
         // ---------------------------------------------------------------//
         // READING IN MESSAGE CONTENT ------------------------------------//
         // ---------------------------------------------------------------//
-        while ((bytes_read = read(connfd, buffer, PATH_MAX)) > 0) {
+        //char newBuffer[2049];
+        //printf("hello\n");
+        //bytes_read = read(connfd, newBuffer, 1);
+        /*while ((bytes_read = read(connfd, buffer, PATH_MAX)) > 0) {
             bytes_written = 0;
+            printf("reading in message content\n");
             // writing the bytes
-		while (bytes_written < bytes_read) {
-                ssize_t result = write(fd,buffer + bytes_written, bytes_read - bytes_written);
-                printf("bytes written:%d\n",(int) result);
+            while (bytes_written < bytes_read) {
+                ssize_t result = write(fd, buffer + bytes_written, bytes_read - bytes_written);
+                printf("bytes written:%d\n", (int) result);
                 // error message
-		if (result < 0){ send_response(connfd,500); return;}
+                if (result < 0) {
+                    send_response(connfd, 500);
+                    return;
+                }
                 bytes_written += result;
             }
-        }
-	close(fd);
+            printf("stuck here??\n");
+        }if (bytes_read == 0) {
+ 	   // Connection closed cleanly; exit the loop
+	      printf("End of data received.\n");
+	} else if (bytes_read < 0) {
+  	  perror("read error");
+  	  send_response(connfd, 500);
+    	return;
+	}*/
+        //printf("sending code??\n");
+        send_response(connfd, code);
+        //printf("reutnring..\n");
+        close(fd);
+        return;
 
         /*
 		figure out where to start reading from...
@@ -302,10 +350,10 @@ void handle_connection(int connfd) {
         //char message[length + 1];
         //for (int i = message_pointer; i < message_pointer + length; i++) {
         ////    message[i - message_pointer] = buffer[i];
-       // }
+        // }
         //message[length] = '\0'; // terminate just in case
         //put(connfd, uri + 1, message); // add one to uri to bypass /
-	
+
     } else {
         send_response(connfd, 505);
         return;
