@@ -42,8 +42,8 @@ void send_response(int soc, int status_code) {
     case 200: buf = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nOK\n"; break;
     case 201: buf = "HTTP/1.1 201 Created\r\nContent-Length: 8\r\n\r\nCreated\n"; break;
     case 400: buf = "HTTP/1.1 400 Bad Request\r\nContent-Length: 12\r\n\r\nBad Request\n"; break;
-    case 403: buf = "HTTP/1.1 403 Forbidden\r\nContent-Length: 9\r\n\r\nForbidden\n"; break;
-    case 404: buf = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found\n"; break;
+    case 403: buf = "HTTP/1.1 403 Forbidden\r\nContent-Length: 10\r\n\r\nForbidden\n"; break;
+    case 404: buf = "HTTP/1.1 404 Not Found\r\nContent-Length: 10\r\n\r\nNot Found\n"; break;
     case 500:
         buf = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 21\r\n\r\nInternal Server "
               "Error\n";
@@ -51,8 +51,7 @@ void send_response(int soc, int status_code) {
     case 501:
         buf = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 16\r\n\r\nNot Implemented\n";
         break;
-        "Supported\n";
-        break;
+    case 505: buf = "HTTP/1.1 505 Version Not Supported\r\nContent-Length: 22\r\n\r\nVersion Not Supported\n"; break;
     }
     if (buf) {
         if (write_n_bytes(soc, buf, strlen(buf)) == -1) {
@@ -72,7 +71,6 @@ int integer_len(int val) {
 int get(int connfd, const char *filename) {
     char *dirname = NULL;
     if (opendir(filename) != NULL) {
-        //free(dirname);
         send_response(connfd, 403);
         return -1;
     }
@@ -124,6 +122,12 @@ int get(int connfd, const char *filename) {
 }
 
 int put(int connfd, const char *filename, const char *message) {
+    char *dirname = NULL;
+    if (opendir(filename) != NULL) {
+        send_response(connfd, 403);
+        return -1;
+    }
+    free(dirname);
     if (!filename || !message) {
         fprintf(stderr, "Filename or message is NULL\n");
         return -1;
@@ -139,7 +143,7 @@ int put(int connfd, const char *filename, const char *message) {
 
     int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
     if (fd == -1) {
-        send_response(connfd, 500);
+        send_response(connfd, 404);
         return -1;
     }
     unsigned long bytes_written = 0;
@@ -191,6 +195,7 @@ regoff_t match_pattern(const char *buffer, char *substring, const char *pattern,
 int handle_filename(int connfd, const char *filename) {
     if (!filename) {
         fprintf(stderr, "Filename or message is NULL\n");
+        send_response(connfd, 403);
         return -1;
     }
     FILE *f = fopen(filename, "r");
@@ -202,13 +207,6 @@ int handle_filename(int connfd, const char *filename) {
         fclose(f);
     }
     return code;
-    printf("move file code\n");
-    int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
-    if (fd == -1) {
-        send_response(connfd, 500);
-        return -1;
-    }
-    return fd;
 }
 
 void handle_connection(int connfd) {
@@ -217,51 +215,58 @@ void handle_connection(int connfd) {
     ssize_t res = read_until(connfd, buffer, BUFF_SIZE - 1, "");
 
     if (res == -1) {
-        send_response(connfd, 500);
+        send_response(connfd, 400);
         return;
     }
     buffer[res] = '\0';
     char command[8];
     res = match_pattern(buffer, command, METHOD_REGEX, 8);
     if (res == -1) {
-        send_response(connfd, 500);
+        send_response(connfd, 400);
         return;
     }
     char uri[64];
     res = match_pattern(buffer, uri, URI_REGEX, 64);
     if (res == -1) {
-        send_response(connfd, 500);
+        send_response(connfd, 400);
         return;
     }
-
+    char http_version[8];
+    res = match_pattern(buffer, http_version, HTTP_VERSION_REGEX, 8);
+    if (res == -1) {
+        send_response(connfd, 505);
+        return;
+    } else {
+        char version[4];
+        for (int i = 0; i < 4; i++) {
+            version[i] = buffer[res - 3 + i];
+        }
+        version[3] = '\0';
+        if (strncmp(version, "1.1", 3) != 0) {
+            send_response(connfd, 505);
+            return;
+        } 
+	if ('\r' != buffer[res]){
+		send_response(connfd, 400);
+		return;
+	}
+    }
     // GET
     if (strncmp(command, "GET", 3) == 0) {
         get(connfd, uri + 1);
     }
     // PUT
     else if (strncmp(command, "PUT", 3) == 0) {
-
-        // write rest of bytes from og buffer into file
-        // then create new buffer
-
-        //char holder[258];
-        //printf("buffer: %s\n----------\n", buffer);
-        //int p = match_pattern(buffer, holder, HEADER_FIELD_REGEX, 128);
         char value[128];
-        //printf("holder: %s\n-----------\n", holder);
         int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
-        //printf("index:--%d--, character--%c%c%c%chmm%c--", p, buffer[p], buffer[p+1],buffer[p+2],buffer[p+3],buffer[p+4]);
-        //printf("value: ------- %s\n---------------\n",value);
         int length = atoi(value + 8);
-
-        //printf("MESSAGE LEN: %d\n", length);
 
         int message_pointer = p + 4;
         int code = handle_filename(connfd, uri + 1);
         char *filename = uri + 1;
         int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
         if (fd == -1) {
-            send_response(connfd, 500);
+            send_response(connfd, 403);
             return;
         }
 
@@ -280,31 +285,11 @@ void handle_connection(int connfd) {
             }
         }
 
-        printf("sending code??  %d\n", code);
         send_response(connfd, code);
-        printf("reutnring..\n");
         close(fd);
         return;
-
-        /*
-		figure out where to start reading from...
-                initialize message buffer to be equal to size 2049
-		while bytes read < length
-			read into buffer
-			while bytes_written < bytes_read
-				write to connfd
-				
-
-	*/
-        //char message[length + 1];
-        //for (int i = message_pointer; i < message_pointer + length; i++) {
-        ////    message[i - message_pointer] = buffer[i];
-        // }
-        //message[length] = '\0'; // terminate just in case
-        //put(connfd, uri + 1, message); // add one to uri to bypass /
-
     } else {
-        send_response(connfd, 505);
+        send_response(connfd, 501);
         return;
     }
 }
