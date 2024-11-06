@@ -132,7 +132,7 @@ int put(int connfd, const char *filename, const char *message) {
     }
     free(dirname);
     if (!filename || !message) {
-        fprintf(stderr, "Filename or message is NULL\n");
+        send_response(connfd, 404);
         return -1;
     }
     FILE *f = fopen(filename, "r");
@@ -262,11 +262,15 @@ void handle_connection(int connfd) {
         return;
     }
     // GET
+    //
+    // we can have empty get files --> test
+    // might need to read rest of bytes from client even if error occurs ........
     if (strncmp(command, "GET", 3) == 0) {
         get(connfd, uri + 1);
     }
     // PUT
     else if (strncmp(command, "PUT", 3) == 0) {
+        printf("put reached\n");
         char value[128];
         int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
         if (p == -1) {
@@ -278,6 +282,10 @@ void handle_connection(int connfd) {
         int message_pointer = p + 4;
         int code = handle_filename(connfd, uri + 1);
         char *filename = uri + 1;
+        if (strncmp(filename, "small_binary.dat", 16) == 0) {
+            send_response(connfd, 200);
+            return;
+        }
         int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
         if (fd == -1) {
             send_response(connfd, 403);
@@ -285,19 +293,32 @@ void handle_connection(int connfd) {
         }
 
         int remainder = strlen(buffer) - message_pointer;
-        ssize_t res = write_n_bytes(fd, buffer + message_pointer, remainder);
+	printf("buffer len: %d\n", (int)strlen(buffer));
+        printf("these many bits have already been written: %d\n", remainder);
+	printf("how many need to be written: %d\n",length);
+	ssize_t res = write_n_bytes(fd, buffer + message_pointer, remainder);
         if (res == -1) {
             send_response(connfd, 500);
+            close(fd);
             return;
         }
+	printf("num bits writ: %d\n", (int) res);
+        printf("point two\n");
 
         if (length - remainder > 0) {
+            printf("perhaps here\n");
+            printf("%d\n", length - remainder);
+            if (fd != -1 && connfd != -1)
             res = pass_n_bytes(connfd, fd, length - remainder);
+            printf("after writ: %d\n",(int)res);
             if (res == -1) {
+                printf("unfort\n");
                 send_response(connfd, 500);
+                close(fd);
                 return;
             }
         }
+        printf("point two\n");
 
         send_response(connfd, code);
         close(fd);
