@@ -51,7 +51,10 @@ void send_response(int soc, int status_code) {
     case 501:
         buf = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 16\r\n\r\nNot Implemented\n";
         break;
-    case 505: buf = "HTTP/1.1 505 Version Not Supported\r\nContent-Length: 22\r\n\r\nVersion Not Supported\n"; break;
+    case 505:
+        buf = "HTTP/1.1 505 Version Not Supported\r\nContent-Length: 22\r\n\r\nVersion Not "
+              "Supported\n";
+        break;
     }
     if (buf) {
         if (write_n_bytes(soc, buf, strlen(buf)) == -1) {
@@ -245,11 +248,18 @@ void handle_connection(int connfd) {
         if (strncmp(version, "1.1", 3) != 0) {
             send_response(connfd, 505);
             return;
-        } 
-	if ('\r' != buffer[res]){
-		send_response(connfd, 400);
-		return;
-	}
+        }
+        if ('\r' != buffer[res]) {
+            send_response(connfd, 400);
+            return;
+        }
+    }
+
+    char request[500];
+    res = match_pattern(buffer, request, REQUEST_LINE_REGEX, 500);
+    if (res == -1) {
+        send_response(connfd, 400);
+        return;
     }
     // GET
     if (strncmp(command, "GET", 3) == 0) {
@@ -259,6 +269,10 @@ void handle_connection(int connfd) {
     else if (strncmp(command, "PUT", 3) == 0) {
         char value[128];
         int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
+        if (p == -1) {
+            send_response(connfd, 400);
+            return;
+        }
         int length = atoi(value + 8);
 
         int message_pointer = p + 4;
