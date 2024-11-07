@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <regex.h>
 #define BUFFER_SIZE  4096
@@ -58,9 +59,10 @@ void send_response(int soc, int status_code) {
     }
     if (buf) {
         if (write_n_bytes(soc, buf, strlen(buf)) == -1) {
-            fprintf(stderr, "Error sending response code %d\n", status_code);
+            close(soc);
         }
     }
+    close(soc); //maybe remove
 }
 int integer_len(int val) {
     int count = 0;
@@ -72,18 +74,18 @@ int integer_len(int val) {
 }
 
 int get(int connfd, const char *filename) {
+    int fd = open(filename, O_RDONLY);
+
+    if (fd == -1) {
+        send_response(connfd, 404);
+        return -1;
+    }
     char *dirname = NULL;
     if (opendir(filename) != NULL) {
         send_response(connfd, 403);
         return -1;
     }
     free(dirname);
-    int fd = open(filename, O_RDONLY, 0);
-
-    if (fd == -1) {
-        send_response(connfd, 404);
-        return -1;
-    }
     struct stat fileStat;
     if (stat(filename, &fileStat) != 0) {
         send_response(connfd, 500);
@@ -115,7 +117,7 @@ int get(int connfd, const char *filename) {
             if (result < 0) {
                 send_response(connfd, 500);
                 close(fd);
-                return 1;
+                return -1;
             }
             bytes_written += result;
         }
@@ -150,10 +152,12 @@ int put(int connfd, const char *filename, const char *message) {
         return -1;
     }
     unsigned long bytes_written = 0;
-    while (bytes_written < strlen(message)) {
-        ssize_t res = write(fd, message + bytes_written, strlen(message) - bytes_written);
+    unsigned long msglen = strlen(message);
+    while (bytes_written < msglen) {
+        ssize_t res = write(fd, message + bytes_written, msglen - bytes_written);
         if (res < 0) {
             send_response(connfd, 500);
+            close(fd);
             return -1;
         }
         bytes_written += res;
@@ -171,6 +175,7 @@ regoff_t match_pattern(const char *buffer, char *substring, const char *pattern,
     regex_t preg;
     int rc = regcomp(&preg, pattern, REG_EXTENDED);
     if (rc != 0) {
+        regfree(&preg);
         return -1;
     }
 
@@ -178,13 +183,11 @@ regoff_t match_pattern(const char *buffer, char *substring, const char *pattern,
     regmatch_t pmatch[8];
     rc = regexec(&preg, buffer, nmatch, pmatch, 0);
 
-    if (rc != 0) {
-        // No match found, so we should free the regex and return -1
+    if (rc == REG_NOMATCH) {
         regfree(&preg);
         return -1;
     }
 
-    // Calculate the length of the matched substring
     regoff_t len = pmatch[0].rm_eo - pmatch[0].rm_so;
     if (len > size - 1) {
         len = size - 1; // Ensure we don't exceed the buffer
@@ -213,16 +216,16 @@ int handle_filename(int connfd, const char *filename) {
 }
 
 void handle_connection(int connfd) {
-    int BUFF_SIZE = 2049;
+    int BUFF_SIZE = 8000; //2049
     char buffer[BUFF_SIZE];
     ssize_t res = read_until(connfd, buffer, BUFF_SIZE - 1, "");
-
     if (res == -1) {
         send_response(connfd, 400);
         return;
     }
     buffer[res] = '\0';
     char command[8];
+    //char *save = buffer;
     res = match_pattern(buffer, command, METHOD_REGEX, 8);
     if (res == -1) {
         send_response(connfd, 400);
@@ -254,9 +257,14 @@ void handle_connection(int connfd) {
             return;
         }
     }
+    if (res == -1 || !strstr(buffer, "\r\n\r\n")) {
+        send_response(connfd, 400);
+        close(connfd);
+        return;
+    }
 
-    char request[500];
-    res = match_pattern(buffer, request, REQUEST_LINE_REGEX, 500);
+    char request[300];
+    res = match_pattern(buffer, request, REQUEST_LINE_REGEX, 300);
     if (res == -1) {
         send_response(connfd, 400);
         return;
@@ -270,56 +278,69 @@ void handle_connection(int connfd) {
     }
     // PUT
     else if (strncmp(command, "PUT", 3) == 0) {
-        printf("put reached\n");
-        char value[128];
+        // finding length of string
+	char value[128];
         int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
-        if (p == -1) {
+        if (p == -1) { // pattern not found
             send_response(connfd, 400);
             return;
         }
         int length = atoi(value + 8);
-
+	
+	// beginning of message in buffer
         int message_pointer = p + 4;
-        int code = handle_filename(connfd, uri + 1);
+        int code = handle_filename(connfd, uri + 1); // status code
+	// uri, + 1 to get rid of /
         char *filename = uri + 1;
-        if (strncmp(filename, "small_binary.dat", 16) == 0) {
-            send_response(connfd, 200);
-            return;
-        }
+	// open file
         int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
-        if (fd == -1) {
+        if (fd == -1) { // couldn't open file
             send_response(connfd, 403);
             return;
         }
-
+	// calculating how many bytes of message are in buffer
         int remainder = strlen(buffer) - message_pointer;
-	printf("buffer len: %d\n", (int)strlen(buffer));
-        printf("these many bits have already been written: %d\n", remainder);
-	printf("how many need to be written: %d\n",length);
-	ssize_t res = write_n_bytes(fd, buffer + message_pointer, remainder);
+        //printf("buffer: %d\n, remainder: %d\n", (int) strlen(save),remainder);
+	//
+	// stuff read in from connfd
+	// HTTP 1.1/ content-length/ message--sdfjksdjfsdkf
+	// remainder = len(message--sdfjksdfksdkfjs)
+	// file: 
+        ssize_t res = write_n_bytes(fd, buffer + message_pointer, remainder);
+        printf("bytes written: %d\n", (int) res);
         if (res == -1) {
             send_response(connfd, 500);
             close(fd);
             return;
         }
-	printf("num bits writ: %d\n", (int) res);
-        printf("point two\n");
+        printf("bytes left to be read: %zd\n content-length: %d\n", length-res, length);
+
+        //int available_bytes = 0;
+        //ioctl(connfd, FIONREAD, &available_bytes);
+        /*int amount = 0;
+        if (available_bytes != 0) {
+            amount = available_bytes;
+        } else {
+            amount = length - res;
+        }*/
 
         if (length - remainder > 0) {
-            printf("perhaps here\n");
-            printf("%d\n", length - remainder);
-            if (fd != -1 && connfd != -1)
-            res = pass_n_bytes(connfd, fd, length - remainder);
-            printf("after writ: %d\n",(int)res);
+            ssize_t res2 = pass_n_bytes(connfd, fd, length - res); // amount
+            printf("result of pass_n_bytes: %zd\n",res2);
+            char end[1];
+            ssize_t res = read_until(connfd, end, 1, "");
+            res = write(fd, end, 1);
+            close(fd);
+            send_response(connfd, code);
+            close(connfd);
+            //res = write_n_bytes(fd, end, 1);
+            printf("result: %zd\n",res);
             if (res == -1) {
-                printf("unfort\n");
                 send_response(connfd, 500);
                 close(fd);
                 return;
             }
         }
-        printf("point two\n");
-
         send_response(connfd, code);
         close(fd);
         return;
