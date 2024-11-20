@@ -8,8 +8,10 @@
 
 #include <stdint.h>
 
-
+#include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
+
 /** @struct rwlock_t
  *
  *  @brief This typedef renames the struct rwlock.  Your `c` file
@@ -21,73 +23,83 @@ typedef struct rwlock rwlock_t;
 typedef enum { READERS, WRITERS, N_WAY } PRIORITY;
 
 typedef struct rwlock {
-	int n;
-	PRIORITY p;
+    int n;
+    PRIORITY p;
+    int readers;
+    int writers;
+    int waiting_readers;
+    int waiting_writers;
+    pthread_mutex_t mtx;
 
 } rwlock_t;
 
+rwlock_t *rwlock_new(PRIORITY p, uint32_t n) {
+    rwlock_t *rw = (rwlock_t *) malloc(sizeof(rwlock_t));
 
-/** @brief Dynamically allocates and initializes a new rwlock with
- *         priority p, and, if using N_WAY priority, n.
- *
- *  @param The priority of the rwlock
- *
- *  @param The n value, if using N_WAY priority
- *
- *  @return a pointer to a new rwlock_t
- */
-
-rwlock_t *rwlock_new(PRIORITY p, uint32_t n){
-	printf("hello from diff file!\n");
-	rwlock_t *rw = (rwlock_t *)malloc(sizeof(rwlock_t));
-	if (rw ==NULL) return NULL;
-	rw->n = n;
-	rw->p = p;
-	return rw;
+    if (rw == NULL)
+        return NULL;
+    pthread_mutex_init(&(rw->mtx), NULL);
+    rw->n = n;
+    rw->readers = 0;
+    rw->writers = 0;
+    rw->waiting_readers = 0;
+    rw->waiting_writes = 0;
+    rw->p = p;
+    return rw;
+}
+void rwlock_delete(rwlock_t **rw) {
+    if (rw == NULL || rw == NULL)
+        return;
+    pthread_mutex_destroy(&((*rw)->mtx));
+    free(*rw);
+    *rw = NULL;
 }
 
-/** @brief Delete your rwlock and free all of its memory.
- *
- *  @param rw the rwlock to be deleted.  Note, you should assign the
- *  passed in pointer to NULL when returning (i.e., you should set *rw
- *  = NULL after deallocation).
- *
- */
-void rwlock_delete(rwlock_t **rw){
-	printf("goodbye\n");
-	if (rw == NULL || rw == NULL) return;
-	free(*rw);
-	*rw = NULL;
+void reader_lock(rwlock_t *rw) {
+    if (rw->p == READERS) {
+        pthread_mutex_lock(&(rw->mtx));
+        rw->readers = rw->readers + 1;
+        pthread_mutex_unlock(&(rw->mtx));
+    } else if (rw->p == WRITERS) {
+        // if writing
+        pthread_mutex_lock(&(rw->mtx));
+        while (rw->writers > 0) { // check if there is more than one writer
+            pthread_mutex_unlock(&(rw->mtx)); // yield if so
+            pthread_mutex_lock(&(rw->mtx));
+        }
+        rw->readers = rw->readers + 1; // otherwise increment # of readers
+        pthread_mutex_unlock(&(rw->mtx));
+    } else { // if n-way
+        // should be similar to #1
+    }
 }
-
-/** @brief acquire rw for reading
- *
- */
-
-void reader_lock(rwlock_t *rw){
-	free(rw);
+void reader_unlock(rwlock_t *rw) {
+    pthread_mutex_lock(&(rw->mtx));
+    rw->readers = rw->readers - 1;
+    pthread_mutex_unlock(&(rw->mtx));
 }
-
-/** @brief release rw for reading--you can assume that the thread
- * releasing the lock has *already* acquired it for reading.
- *
- */
-void reader_unlock(rwlock_t *rw){
-	free(rw);
-
+void writer_lock(rwlock_t *rw) {
+    if (rw->p == READERS) {
+        pthread_mutex_lock(&(rw->mtx));
+        while (rw->readers > 0 && rw->writers != 0) {
+            pthread_mutex_unlock(&(rw->mtx));
+            pthread_mutex_lock(&(rw->mtx));
+        }
+        rw->writers = rw->writers + 1;
+        pthread_mutex_unlock(&(rw->mtx));
+    } else if (rw->p == WRITERS) {
+        pthread_mutex_lock(&(rw->mtx));
+        while (rw->writers != 0) {
+            pthread_mutex_unlock(&(rw->mtx));
+            pthread_mutex_lock(&(rw->mtx));
+        }
+        rw->writers = rw->writers + 1;
+        pthread_mutex_unlock(&(rw->mtx));
+    } else {
+    }
 }
-
-/** @brief acquire rw for writing
- *
- */
-void writer_lock(rwlock_t *rw){
-	free(rw);
-
-}
-/** @brief release rw for writing--you can assume that the thread
- * releasing the lock has *already* acquired it for writing.
- *
- */
-void writer_unlock(rwlock_t *rw){
-	free(rw);
+void writer_unlock(rwlock_t *rw) {
+    pthread_mutex_lock(&(rw->mtx));
+    rw->writers = 0;
+    pthread_mutex_unlock(&(rw->mtx));
 }
