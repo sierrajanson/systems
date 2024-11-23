@@ -1,20 +1,17 @@
 /**
- * @File queue.h
+ * @File queue.c
  *
- * The header file that you need to implement for assignment 3.
- *
- * @author Andrew Quinn
+ * @author Sierra Janson
  */
 
-//#pragma once
 
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
-
 #include "rwlock.h"
-// added after
+
+// headers i addeed
 #include <stdio.h>
 #include <assert.h>
 #include <pthread.h>
@@ -35,7 +32,7 @@ typedef struct queue {
 } queue_t;
 
 queue_t *queue_new(int size) {
-    printf("queue created\n");
+    // initialize a new queue
     queue_t *q = (queue_t *) malloc(sizeof(queue_t));
     if (q == NULL)
         return NULL;
@@ -47,7 +44,7 @@ queue_t *queue_new(int size) {
 }
 
 void queue_delete(queue_t **q) {
-    printf("queue deleted");
+	// delete queue
     if (q == NULL)
         return;
     if (*q == NULL)
@@ -87,8 +84,8 @@ bool queue_push(queue_t *q, void *elem) {
     }
     if (q->head == NULL) {
         q->head = new_node;
+        q->count++;
         pthread_mutex_unlock(&(q->mtx));
-        q->count = q->count + 1;
         printf("releasing lock: %p\n", elem);
         return true;
     }
@@ -98,7 +95,7 @@ bool queue_push(queue_t *q, void *elem) {
         start = start->next;
     }
     start->next = new_node;
-    q->count = q->count + 1;
+    q->count++;
     printf("q count : %d\n", q->count);
     printf("releasing lock: %p\n", elem);
     pthread_mutex_unlock(&(q->mtx));
@@ -111,8 +108,8 @@ bool queue_pop(queue_t *q, void **elem) {
         return false;
 
     // if empty --> block
-    if (q->head == NULL)
-        return false;
+    /*if (q->head == NULL)
+        return false;*/
     // if empty should elem be NULL?
 
     //while (q->count == 0) {};
@@ -127,7 +124,7 @@ bool queue_pop(queue_t *q, void **elem) {
     *elem = to_remove->data; // give elem value
     to_remove->next = NULL; // set pointer to NULL
     free(to_remove);
-    q->count = q->count - 1;
+    q->count--;
     pthread_mutex_unlock(&(q->mtx));
     return true;
 }
