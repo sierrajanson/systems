@@ -8,7 +8,7 @@
 #include "debug.h"
 #include "response.h"
 #include "request.h"
-
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -32,7 +32,7 @@ void handle_connection(int, rwlock_t *rw);
 void handle_get(conn_t *);
 void handle_put(conn_t *);
 void handle_unsupported(conn_t *);
-void thread_work_func(void *args){
+void *thread_work_func(void *args){
 	struct thread_args *t_args = (struct thread_args *)args;
 	rwlock_t *rw = t_args->rw;
 	queue_t *q = t_args->q;
@@ -43,6 +43,7 @@ void thread_work_func(void *args){
 	handle_connection(*connfd, rw);
 	close(*connfd);
 	}
+	return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -51,7 +52,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
         return EXIT_FAILURE;
     }
-
     /* Use getopt() to parse the command-line arguments */
 
     char *endptr = NULL;
@@ -72,8 +72,22 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Invalid Port\n");
         return EXIT_FAILURE;
     }
+    int opt;
+    int num_threads = 0;
+
+    while ((opt = getopt(argc, argv,":if:lrx")) != -1)
+	{
+	switch(opt){
+		case 't':
+			num_threads = atoi(optarg);
+			break;
+		case '?':
+			printf("unknown option :%c\n",optopt);
+			break;
+		}	
+	}
+    assert(num_threads != 0);
     queue_t *q = queue_new(64);
-    int num_threads = 4;
     rwlock_t *rw = rwlock_new(READERS, num_threads); 
 	
     struct thread_args args;
@@ -91,7 +105,7 @@ int main(int argc, char **argv) {
     /* Hint: You will need to change how handle_connection() is used */
     while (1) {
         int connfd = listener_accept(&sock);
-	queue_push(q,connfd);
+	queue_push(q,(void *)&connfd);
     }	
 	//handle_connection(connfd);
         //close(connfd);
@@ -136,6 +150,9 @@ void handle_connection(int connfd, rwlock_t *rw) {
 void handle_get(conn_t *conn) {
     char *uri = conn_get_uri(conn);
     debug("Handling GET request for %s", uri);
+    const Response_t *res = NULL;
+    (void) res;
+    fprintf(stderr,"GET,/%s,200,1\n",uri);
     // What are the steps in here?
 
     // 1. Open the file.
