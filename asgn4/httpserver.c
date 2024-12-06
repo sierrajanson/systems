@@ -23,7 +23,6 @@
 #include <pthread.h>
 #define OPTI "t"
 
-
 struct thread_args {
     rwlock_t *rw;
     queue_t *q;
@@ -59,17 +58,15 @@ int main(int argc, char **argv) {
 
     while ((opt = getopt(argc, argv, OPTI)) != -1) {
         switch (opt) {
-       		case 't': 
-			num_threads = atoi(argv[optind]); //optarg); 
-			 break;
-        	case '?': printf("unknown option :%c\n", optopt); break;
+        case 't':
+            num_threads = atoi(argv[optind]); //optarg);
+            break;
+        case '?': printf("unknown option :%c\n", optopt); break;
         }
     }
-    printf("you crashing out here?\n");
-    printf("number of threads:%d\n",num_threads);
-	assert(num_threads != 0);
+    assert(num_threads != 0 && "number of threads is 0, cannot continue");
     char *endptr = NULL;
-    size_t port = (size_t) strtoull(argv[optind+1], &endptr, 10);
+    size_t port = (size_t) strtoull(argv[optind + 1], &endptr, 10);
     if (endptr && *endptr != '\0') {
         fprintf(stderr, "Invalid Port\n");
         return EXIT_FAILURE;
@@ -87,8 +84,8 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    printf("queue and rwlock initialized:\n");
-    queue_t *q = queue_new(64);
+    // initialize queue and RW lock
+    queue_t *q = queue_new(512);
     rwlock_t *rw = rwlock_new(READERS, num_threads);
 
     struct thread_args args;
@@ -97,7 +94,6 @@ int main(int argc, char **argv) {
 
     pthread_t threads[num_threads];
     for (int i = 0; i < num_threads; i++) {
-	printf("creaitng the threads here\n");
         pthread_create(&threads[i], NULL, thread_work_func, (void *) &args);
     }
 
@@ -106,9 +102,9 @@ int main(int argc, char **argv) {
     // block if all of your threads are active
     /* Hint: You will need to change how handle_connection() is used */
     while (1) {
-	printf("waiting for connection...\n");
+        printf("waiting for connection...\n");
         int connfd = listener_accept(&sock);
-	printf("acquired~: %d\n", connfd);
+        printf("connfd: %d\n", connfd);
         queue_push(q, (void *) &connfd);
     }
     //handle_connection(connfd);
@@ -129,19 +125,13 @@ void handle_connection(int connfd, rwlock_t *rw) {
         //debug("%s", conn_str(conn));
         const Request_t *req = conn_get_request(conn);
         if (req == &REQUEST_GET) {
-            // rw lock here
             reader_lock(rw);
-            // reader lock
             handle_get(conn);
             reader_unlock(rw);
-            // reader unlock
         } else if (req == &REQUEST_PUT) {
-            // rw lock here
-            // writer lock
             writer_lock(rw);
             handle_put(conn);
             writer_unlock(rw);
-            // writer unlock
         } else { // do we need a lock for this?
             handle_unsupported(conn);
         }
@@ -153,8 +143,8 @@ void handle_get(conn_t *conn) {
     char *uri = conn_get_uri(conn);
     //debug("Handling GET request for %s", uri);
     printf("URI of file: %s\n", uri);
-    char *rid = conn_get_header(conn, "Request-Id"); 
-    printf("RID of file: %s\n", rid);   
+    char *rid = conn_get_header(conn, "Request-Id");
+    printf("RID of file: %s\n", rid);
     int sc = 0;
     // What are the steps in here?
 
@@ -164,38 +154,38 @@ void handle_get(conn_t *conn) {
     //   b. Cannot find the file -- use RESPONSE_NOT_FOUND
     //   c. Other error? -- use RESPONSE_INTERNAL_SERVER_ERROR
     // (Hint: Check errno for these cases)!
-    int fd = open(uri, O_RDONLY); 
-    printf("fd: %d\n",fd);
-    if (fd == -1){
-	printf("couldn't open file\n");
-	 strerror(errno);
-	switch (errno) {
-		case EACCES:
-    			sc = 403;
-			conn_send_response(conn, &RESPONSE_FORBIDDEN);
-			break;
-		case ENOENT:
-			sc = 404;
-    			conn_send_response(conn, &RESPONSE_NOT_FOUND);
-			break;
-		case EISDIR:
-			sc = 403;
-    			conn_send_response(conn, &RESPONSE_FORBIDDEN);
-			break;
-		default:
-			sc = 500;
-    			conn_send_response(conn, &RESPONSE_INTERNAL_SERVER_ERROR);
-			break;
-	}
-    	close(fd);
-	return;
+    int fd = open(uri, O_RDONLY);
+    printf("fd: %d\n", fd);
+    if (fd == -1) {
+        printf("couldn't open file\n");
+        strerror(errno);
+        switch (errno) {
+        case EACCES:
+            sc = 403;
+            conn_send_response(conn, &RESPONSE_FORBIDDEN);
+            break;
+        case ENOENT:
+            sc = 404;
+            conn_send_response(conn, &RESPONSE_NOT_FOUND);
+            break;
+        case EISDIR:
+            sc = 403;
+            conn_send_response(conn, &RESPONSE_FORBIDDEN);
+            break;
+        default:
+            sc = 500;
+            conn_send_response(conn, &RESPONSE_INTERNAL_SERVER_ERROR);
+            break;
+        }
+        close(fd);
+        return;
     }
 
     struct stat file_stat;
-    if (fstat(fd, &file_stat) == -1){
-    	printf("ERROR reading length of file\n");
+    if (fstat(fd, &file_stat) == -1) {
+        printf("ERROR reading length of file\n");
     } else {
-    	printf("got length of file successfully\n");
+        printf("got length of file successfully\n");
     }
     // 2. Get the size of the file.
     // (Hint: Checkout the function fstat())!
@@ -206,15 +196,15 @@ void handle_get(conn_t *conn) {
 
     // 4. Send the file
     // (Hint: Checkout the conn_send_file() function!)
-    const Response_t *res = conn_send_file(conn, fd,file_stat.st_size);
+    const Response_t *res = conn_send_file(conn, fd, file_stat.st_size);
     if (res != NULL) {
-	    printf("error in sending file!\n");
+        printf("error in sending file!\n");
     } else {
-    	printf("res should be null\n");
+        printf("res should be null\n");
     }
-    if (rid == NULL){
-	printf("request id was null\n");
-    	rid = "0";
+    if (rid == NULL) {
+        printf("request id was null\n");
+        rid = "0";
     }
     fprintf(stderr, "GET,/%s,%d,%s\n", uri, sc, rid);
     close(fd);
@@ -223,18 +213,18 @@ void handle_get(conn_t *conn) {
 
 void handle_put(conn_t *conn) {
     char *uri = conn_get_uri(conn);
-   // debug("Handling PUT request for %s", uri);
-    char *rid = conn_get_header(conn, "Request-Id");    
+    // debug("Handling PUT request for %s", uri);
+    char *rid = conn_get_header(conn, "Request-Id");
     int sc = 0;
     // What are the steps in here?
 
     // 1. Check if file already exists before opening it.
     // (Hint: check the access() function)!
-    if (access(uri, F_OK) != 0){ // have to create file if it doesn't exist
-    	sc = 201;
+    if (access(uri, F_OK) != 0) { // have to create file if it doesn't exist
+        sc = 201;
     } else {
-	    sc = 200;
-    }    
+        sc = 200;
+    }
     // 2. Open the file.
     // If open() returns < 0, then use the result appropriately
     //   a. Cannot access -- use RESPONSE_FORBIDDEN
@@ -243,53 +233,58 @@ void handle_put(conn_t *conn) {
     //   d. Other error? -- use RESPONSE_INTERNAL_SERVER_ERROR
     // (Hint: Check errno for these cases)!
 
-    int fd = open(uri, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP); 
+    int fd = open(uri, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
     printf("file opened\n");
-    if (fd == -1){
-	 strerror(errno);
-	switch (errno) {
-		case EACCES:
-    			sc = 403;
-			conn_send_response(conn, &RESPONSE_FORBIDDEN);
-			break;
-		case ENOENT:
-			sc = 404;
-    			conn_send_response(conn, &RESPONSE_NOT_FOUND);
-			break;
-		case EISDIR:
-			sc = 403;
-    			conn_send_response(conn, &RESPONSE_FORBIDDEN);
-			break;
-		default:
-			sc = 500;
-    			conn_send_response(conn, &RESPONSE_INTERNAL_SERVER_ERROR);
-			break;
-	
-	}
-	close(fd);
-	return;
+    if (fd == -1) {
+        strerror(errno);
+        switch (errno) {
+        case EACCES:
+            sc = 403;
+            conn_send_response(conn, &RESPONSE_FORBIDDEN);
+            break;
+        case ENOENT:
+            sc = 404;
+            conn_send_response(conn, &RESPONSE_NOT_FOUND);
+            break;
+        case EISDIR:
+            sc = 403;
+            conn_send_response(conn, &RESPONSE_FORBIDDEN);
+            break;
+        default:
+            sc = 500;
+            conn_send_response(conn, &RESPONSE_INTERNAL_SERVER_ERROR);
+            break;
+        }
+        close(fd);
+        return;
     }
-	printf("got through to here\n");
+    printf("got through to here\n");
     // 3. Receive the file
     // (Hint: Checkout the conn_recv_file() function)!
     const Response_t *result = conn_recv_file(conn, fd);
     printf("file received\n");
     // 4. Send the response
     // (Hint: Checkout the conn_send_response() function)!
-    //const Response_t trial= RESPONSE_OK;
-    result = conn_send_response(conn, result);
-	if (result != NULL){
-	       	printf("error in receiving file!!!\n");
-	}
+    if (sc == 200)
+    result = conn_send_response(conn, &RESPONSE_OK);
+    if (sc == 201)
+    result = conn_send_response(conn, &RESPONSE_CREATED);
+    if (result != NULL) {
+        printf("error in receiving file!!!\n");
+    }
     // 5. Close the file
-     close(fd);	
-     printf("file closed\n");
+    close(fd);
+    printf("file closed\n");
+    if (rid == NULL) {
+        printf("request id was null\n");
+        rid = "0";
+    }
     fprintf(stderr, "PUT,/%s,%d,%s\n", uri, sc, rid);
     printf("audit log wrirten too\n");
 }
 
 void handle_unsupported(conn_t *conn) {
-   // debug("Handling unsupported request");
+    // debug("Handling unsupported request");
 
     // Send responses
     conn_send_response(conn, &RESPONSE_NOT_IMPLEMENTED);
