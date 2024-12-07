@@ -1,0 +1,28 @@
+Includes all files: 5 / 5
+   [Pass] [2/2] Makefile in submission
+   [Pass] [1/1] README.md in submission
+   [Pass] [1/1] queue.c in submission
+   [Pass] [1/1] rwlock.c in submission
+Clang formatted files: 5 / 5
+   [Pass] [2/2] queue.c clang-formatted
+   [Pass] [2/2] queue.h clang-formatted
+   [Pass] [2/2] rwlock.c clang-formatted
+   [Pass] [2/2] rwlock.h clang-formatted
+Make all builds program: 10 / 10
+   [Pass] [2/2] make queue.o successful
+   [Pass] [2/2] make rwlock.o successful
+   [Pass] [2/2] make successful
+   [Pass] [2/2] make all successful
+   [Pass] [2/2] make clean successful.
+   [Pass] [2/2] make uses clang and correct flags
+Queue works as expected: 0 / 40
+   Timeout (60 seconds).
+RWLock works as expected: 25 / 40
+   [Pass] [10/10] RWLock supports interface
+   [Fail] [0/5] RWLock allows at most one writer.
+   [Pass] [5/5] RWLock allows any number of readers.
+   [Fail] [0/5] RWLock upholds mutex under stress.
+   [Pass] [5/5] RWLock with readers gives expected priority.
+   [Pass] [5/5] RWLock with readers gives expected priority.
+   [Fail] [0/5] RWLock with readers gives expected priority.
+

@@ -1,0 +1,2 @@
+clang -o queue queue.c
+valgrind ./queue

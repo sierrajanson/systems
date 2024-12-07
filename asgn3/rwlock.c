@@ -41,7 +41,7 @@ rwlock_t *rwlock_new(PRIORITY p, uint32_t n) {
 
 // delete the rwlock
 void rwlock_delete(rwlock_t **rw) {
-	
+
     // if pointer is NULL, return
     if (rw == NULL || *rw == NULL)
         return;
@@ -59,37 +59,40 @@ void rwlock_delete(rwlock_t **rw) {
 
 void reader_lock(rwlock_t *rw) {
 
-    pthread_mutex_lock(&(rw->mtx)); // lock 
+    pthread_mutex_lock(&(rw->mtx)); // lock
     rw->waiting_readers++; // increment # of waiting readers
 
     // while there are writers or if N_WAY priority and there are waiting writers and the number of current readers is greater than n, wait
     while (rw->writers > 0 || (rw->p == N_WAY && rw->waiting_writers > 0 && rw->readers >= rw->n)) {
-        pthread_cond_wait(&(rw->cond), &(rw->mtx)); // wait to be signalled to let go (maintaining order)
+        pthread_cond_wait(
+            &(rw->cond), &(rw->mtx)); // wait to be signalled to let go (maintaining order)
     }
-	// enter critical section
+    // enter critical section
     rw->waiting_readers--; // decrease the number of waiting readers
     rw->readers++; // go
-	//unlock
+        //unlock
     pthread_mutex_unlock(&(rw->mtx));
 }
 
 void reader_unlock(rwlock_t *rw) {
-	// lock to protect inside	
+    // lock to protect inside
     pthread_mutex_lock(&(rw->mtx));
     // decrease # of readers
     rw->readers--;
 
-    if (rw->readers == 0) { // if the number of readers is 0, broadcast so writers/readers can go depending on priority
+    if (rw->readers
+        == 0) { // if the number of readers is 0, broadcast so writers/readers can go depending on priority
         pthread_cond_broadcast(&(rw->cond));
     }
     pthread_mutex_unlock(&(rw->mtx));
 }
 
 void writer_lock(rwlock_t *rw) {
-	// lock to protect inside
+    // lock to protect inside
     pthread_mutex_lock(&(rw->mtx));
     rw->waiting_writers++; // increment number of waiting writers
-    while (rw->writers > 0 || rw->readers > 0) { // while there is any writer or number of readers is greater than 0
+    while (rw->writers > 0
+           || rw->readers > 0) { // while there is any writer or number of readers is greater than 0
         pthread_cond_wait(&(rw->cond), &(rw->mtx)); // wait!! (to be signalled)
     }
 
@@ -101,6 +104,7 @@ void writer_lock(rwlock_t *rw) {
 void writer_unlock(rwlock_t *rw) {
     pthread_mutex_lock(&(rw->mtx)); // protect inside
     rw->writers = 0; // set writers equal to 0
-    pthread_cond_broadcast(&(rw->cond)); // broadcast so waiting readers or another writer can go depending on priority
+    pthread_cond_broadcast(
+        &(rw->cond)); // broadcast so waiting readers or another writer can go depending on priority
     pthread_mutex_unlock(&(rw->mtx)); // release lock
 }

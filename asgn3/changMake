@@ -1,0 +1,38 @@
+#EXECBINS = queue_test rwlock_test
+
+#SOURCES  = $(wildcard *.c)
+#OBJECTS  = $(SOURCES:%.c=%.o)
+
+CC       = clang
+CFLAGS   = -Wall -Werror -Wextra -Wpedantic -Wstrict-prototypes
+LFLAGS   = -lpthread
+
+#.PHONY: all clean
+
+#all: queue.o rwlock.o
+all: queue
+
+rwlock.o: rwlock.c rwlock.h
+	$(CC) $(CFLAGS) -o rwlock.o -c rwlock.c
+
+queue.o: queue.c queue.h
+	$(CC) $(CFLAGS) -o queue.o -c queue.c
+
+queue: queue.o rwlock.o
+	$(CC) $(CFLAGS) -o queue queue.o rwlock.o
+
+
+
+#rwlock.o: rwlock.c rwlock.h
+#	$(CC) $(CFLAGS) -o $@ -c $<
+
+#$(EXECBINS): $(OBJECTS)
+#	$(CC) $(LFLAGS) -o $@ $^
+
+#%.o : %.c
+#	$(CC) $(CFLAGS) -c $<
+
+#format:
+#	clang-format -i -style=file $(SOURCES)
+#clean:
+#	rm -f $(EXECBINS) $(OBJECTS)

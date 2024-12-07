@@ -1,16 +1,20 @@
 /**
- * @File queue.c
+ * @File queue.h
  *
- * @author Sierra Janson
+ * The header file that you need to implement for assignment 3.
+ *
+ * @author Andrew Quinn
  */
+
+//#pragma once
 
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include "rwlock.h"
 
-// headers i addeed
+#include "rwlock.h"
+// added after
 #include <stdio.h>
 #include <assert.h>
 #include <pthread.h>
@@ -27,10 +31,11 @@ typedef struct queue {
     pthread_mutex_t mtx;
     int cap;
     int count; // atomic_int
+    //queue_node_t *tail;
 } queue_t;
 
 queue_t *queue_new(int size) {
-    // initialize a new queue
+    printf("queue created\n");
     queue_t *q = (queue_t *) malloc(sizeof(queue_t));
     if (q == NULL)
         return NULL;
@@ -42,11 +47,12 @@ queue_t *queue_new(int size) {
 }
 
 void queue_delete(queue_t **q) {
-    // delete queue
+    printf("queue deleted");
     if (q == NULL)
         return;
     if (*q == NULL)
         return; // don't free I think
+    printf("no pointer was null\n");
     queue_node_t *next = (*q)->head;
     queue_node_t *current = (*q)->head;
     pthread_mutex_destroy(&((*q)->mtx));
@@ -60,26 +66,28 @@ void queue_delete(queue_t **q) {
 }
 
 bool queue_push(queue_t *q, void *elem) {
-    if (q == NULL)
-        return false; // elem == NULL
+    printf("adding to queue\n");
+    if (q == NULL || elem == NULL)
+        return false;
     queue_node_t *new_node = (queue_node_t *) malloc(sizeof(queue_node_t));
     if (new_node == NULL)
         return false;
 
-    // if successful, initalize values
     new_node->next = NULL;
     new_node->data = elem;
 
-    // check if at capacity
+    printf("calling lock: %p", elem);
     pthread_mutex_lock(&(q->mtx));
+    printf("acquired lock: %p", elem);
     while (q->cap <= q->count) {
         pthread_mutex_unlock(&(q->mtx));
         pthread_mutex_lock(&(q->mtx));
     }
     if (q->head == NULL) {
         q->head = new_node;
-        q->count++;
+        q->count = q->count + 1;
         pthread_mutex_unlock(&(q->mtx));
+        printf("releasing lock: %p\n", elem);
         return true;
     }
     queue_node_t *start = q->head;
@@ -88,15 +96,19 @@ bool queue_push(queue_t *q, void *elem) {
         start = start->next;
     }
     start->next = new_node;
-    q->count++;
+    q->count = q->count + 1;
+    printf("q count : %d\n", q->count);
+    printf("releasing lock: %p\n", elem);
     pthread_mutex_unlock(&(q->mtx));
     return true;
 }
 bool queue_pop(queue_t *q, void **elem) {
     // create multithreaded implementation
-    if (q == NULL)
+    printf("removign from queue\n");
+    if (q == NULL || elem == NULL)
         return false;
     pthread_mutex_lock(&(q->mtx));
+    printf("q count : %d\n", q->count);
     while (q->count == 0) {
         pthread_mutex_unlock(&(q->mtx));
         pthread_mutex_lock(&(q->mtx));
@@ -110,3 +122,23 @@ bool queue_pop(queue_t *q, void **elem) {
     pthread_mutex_unlock(&(q->mtx));
     return true;
 }
+
+/*
+int main(void) {
+    // initialize queue
+    printf("hello\n");
+    rwlock_t *rw = rwlock_new(READERS, 10);
+    rwlock_delete(&rw);
+    queue_t *q = queue_new(5);
+	bool res = queue_push(q,(void *)4);
+	res = queue_push(q,(void *)3);
+	int value = 0;
+	printf("value before: %d\n", value);	
+	res = queue_pop(q, (void **)(&value)); 
+	printf("result: %d\n",res);
+	res = queue_pop(q, (void **)(&value)); 
+	printf("result: %d\n",res);
+    queue_delete(&q);
+   printf("value now: %d\n", value);
+    return 0;
+}*/
