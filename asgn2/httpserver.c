@@ -6,6 +6,7 @@
  * @author Sierra Janson :)
  */
 
+#include <sys/select.h>
 #include "asgn2_helper_funcs.h"
 #include "debug.h"
 #include "protocol.h"
@@ -279,68 +280,65 @@ void handle_connection(int connfd) {
     // PUT
     else if (strncmp(command, "PUT", 3) == 0) {
         // finding length of string
-	char value[128];
+        char value[128];
         int p = match_pattern(buffer, value, LENGTH_REGEX, 128);
         if (p == -1) { // pattern not found
             send_response(connfd, 400);
             return;
         }
         int length = atoi(value + 8);
-	
-	// beginning of message in buffer
+
+        // beginning of message in buffer
         int message_pointer = p + 4;
+
         int code = handle_filename(connfd, uri + 1); // status code
-	// uri, + 1 to get rid of /
+        // uri, + 1 to get rid of /
         char *filename = uri + 1;
-	// open file
+        // open file
         int fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRGRP);
         if (fd == -1) { // couldn't open file
             send_response(connfd, 403);
             return;
         }
-	// calculating how many bytes of message are in buffer
+        // calculating how many bytes of message are in buffer
         int remainder = strlen(buffer) - message_pointer;
         //printf("buffer: %d\n, remainder: %d\n", (int) strlen(save),remainder);
-	//
-	// stuff read in from connfd
-	// HTTP 1.1/ content-length/ message--sdfjksdjfsdkf
-	// remainder = len(message--sdfjksdfksdkfjs)
-	// file: 
+        //
+        // stuff read in from connfd
+        // HTTP 1.1/ content-length/ message--sdfjksdjfsdkf
+        // remainder = len(message--sdfjksdfksdkfjs)
+        // file:
         ssize_t res = write_n_bytes(fd, buffer + message_pointer, remainder);
-        printf("bytes written: %d\n", (int) res);
+        //printf("bytes written: %d\n", (int) res);
         if (res == -1) {
             send_response(connfd, 500);
             close(fd);
             return;
         }
-        printf("bytes left to be read: %zd\n content-length: %d\n", length-res, length);
+        //printf("bytes left to be read: %zd\n content-length: %d\n", length - res, length);
 
-        //int available_bytes = 0;
-        //ioctl(connfd, FIONREAD, &available_bytes);
-        /*int amount = 0;
-        if (available_bytes != 0) {
+        int available_bytes = 0; //wait_for_available_bytes(connfd, 2);
+        ioctl(connfd, FIONREAD, &available_bytes);
+        //int amount = 0;
+        /*if (available_bytes != 0) {
             amount = available_bytes;
         } else {
             amount = length - res;
         }*/
-
+        //printf("%d\n", available_bytes);
+        //while (available_bytes > 0) {
         if (length - remainder > 0) {
-            ssize_t res2 = pass_n_bytes(connfd, fd, length - res); // amount
-            printf("result of pass_n_bytes: %zd\n",res2);
-            char end[1];
-            ssize_t res = read_until(connfd, end, 1, "");
-            res = write(fd, end, 1);
-            close(fd);
-            send_response(connfd, code);
-            close(connfd);
-            //res = write_n_bytes(fd, end, 1);
-            printf("result: %zd\n",res);
+            res = pass_n_bytes(connfd, fd, available_bytes); // amount
+            printf("result: %zd\n", res);
             if (res == -1) {
                 send_response(connfd, 500);
                 close(fd);
                 return;
             }
         }
+        //available_bytes = wait_for_available_bytes(connfd, 2);
+        //printf("%d\n", available_bytes);
+        //}
         send_response(connfd, code);
         close(fd);
         return;
