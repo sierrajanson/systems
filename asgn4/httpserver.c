@@ -32,10 +32,18 @@ struct thread_args {
     queue_t *q;
 };
 
+
+
 void handle_connection(int, int, int);//rwlock_t *rw);
 void handle_get(conn_t *,int);
 void handle_put(conn_t *,int);
 void handle_unsupported(conn_t *);
+volatile int running = 1;
+
+void handle_sigint(int sig){
+	(void) sig;
+	running = 0;
+}
 
 // FUNCTION FOR THE THREAD TO COMPLETE
 void *thread_work_func(void *args) {
@@ -46,11 +54,11 @@ void *thread_work_func(void *args) {
 	int tid = t_args->tid;
 
     // CONTINUOUSLY POP FROM QUEUE	
-    while (1) {
+    while (running) {
         int *connfd;
         queue_pop(q, (void **) &connfd);
         handle_connection(*connfd, num_threads, tid);
-        close(*connfd);
+        //close(*connfd);
     }
     return NULL;
 }
@@ -85,7 +93,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Invalid Port\n");
         return EXIT_FAILURE;
     }
-
+	
+    signal(SIGINT, handle_sigint);
     signal(SIGPIPE, SIG_IGN);
     Listener_Socket sock;
     if (listener_init(&sock, port) < 0) {
@@ -97,26 +106,33 @@ int main(int argc, char **argv) {
     // CREATING THREADS
     // ----------------------------------
     queue_t *q = queue_new(512);
-    struct thread_args args;
-    args.q = q;
-    args.num_threads = num_threads;
 
     pthread_t threads[num_threads];
     for (int i = 0; i < num_threads; i++) {
+       struct thread_args args;
+        args.q = q;
 	args.tid = i;    
-        pthread_create(&threads[i], NULL, thread_work_func, (void *) &args);
+        args.num_threads = num_threads;
+        pthread_create(&threads[i], NULL, *thread_work_func, (void *) &args);
     }
+
 
     // CREATING HASHMAP
     hcreate(512);
     
-    while (1) {
+    while (running) {
         printf("waiting for connection...\n");
         int connfd = listener_accept(&sock);
         printf("connfd: %d\n", connfd);
         queue_push(q, (void *) &connfd);
     }
+    running = 0;
 
+    for (int i = 0; i < num_threads; i++){
+    	pthread_join(threads[i], NULL);
+    }
+	
+    queue_delete(&q);
     hdestroy();
     return EXIT_SUCCESS;
 }
@@ -161,7 +177,8 @@ void handle_connection(int connfd, int num_threads, int tid){ //, rwlock_t *rw) 
             handle_unsupported(conn);
         }
     }
-    conn_delete(&conn);
+    close(connfd);
+    //conn_delete(&conn);
 }
 
 void handle_get(conn_t *conn, int tid) {
