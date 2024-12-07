@@ -155,7 +155,8 @@ void handle_connection(int connfd, int num_threads, int tid){ //, rwlock_t *rw) 
 	    handle_get(conn, tid);
         } else if (req == &REQUEST_PUT) {
 	    printf("put \n");
-            handle_put(conn, tid);
+            fflush(stdout);
+	    handle_put(conn, tid);
         } else { // do we need a lock for this?
             handle_unsupported(conn);
         }
@@ -172,11 +173,12 @@ void handle_get(conn_t *conn, int tid) {
     rwlock_t *rw = (rwlock_t *) ret->data; 
     //debug("Handling GET request for %s", uri);
     printf("URI of file: %s\n", uri);
-
     // GET RID
     char *rid = conn_get_header(conn, "Request-Id");
     printf("RID of file: %s\n", rid);
     int sc = 0;
+
+
     reader_lock(rw);
     int fd = open(uri, O_RDONLY);
     struct stat file_stat;
@@ -185,7 +187,6 @@ void handle_get(conn_t *conn, int tid) {
     } else {
 	printf("ERROR reading length of file\n");
     }
-    
     printf("fd: %d\n", fd);
     if (fd == -1) {
         printf("couldn't open file\n");
@@ -209,9 +210,10 @@ void handle_get(conn_t *conn, int tid) {
             break;
         }
         close(fd);
+        fprintf(stderr, "GET,/%s,%d,%s\n", uri, sc, rid);
+	reader_unlock(rw);
         return;
     }
-
     const Response_t *res = conn_send_file(conn, fd, file_stat.st_size);
     if (res != NULL) {
         printf("error in sending file!\n");
@@ -224,6 +226,7 @@ void handle_get(conn_t *conn, int tid) {
     }
     close(fd);
     fprintf(stderr, "GET,/%s,%d,%s\n", uri, sc, rid);
+    fflush(stderr);
     reader_unlock(rw);
 }
 // tnam
@@ -289,6 +292,8 @@ void handle_put(conn_t *conn, int tid){//, int num_threads) {
             break;
         }
         close(fd);
+        writer_unlock(rw);	
+        fprintf(stderr, "GET,/%s,%d,%s\n", uri, sc, rid);
         return;
     }
     if (sc == 200)
@@ -305,6 +310,7 @@ void handle_put(conn_t *conn, int tid){//, int num_threads) {
         rid = "0";
     }
     fprintf(stderr, "PUT,/%s,%d,%s\n", uri, sc, rid);
+    fflush(stderr);
     writer_unlock(rw);
 }
 
