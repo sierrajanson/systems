@@ -27,7 +27,7 @@ typedef struct queue queue_t;
  *  @return a pointer to a new queue_t
  */
 queue_t *queue_new(int size);
-
+bool queue_is_empty(queue_t *q);
 /** @brief Delete your queue and free all of its memory.
  *
  *  @param q the queue to be deleted.  Note, you should assign the

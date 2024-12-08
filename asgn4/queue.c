@@ -110,3 +110,14 @@ bool queue_pop(queue_t *q, void **elem) {
     pthread_mutex_unlock(&(q->mtx));
     return true;
 }
+
+bool queue_is_empty(queue_t *q) {
+    pthread_mutex_lock(&(q->mtx));
+    if (q->count == 0) {
+        pthread_mutex_unlock(&(q->mtx));
+        return true;
+    } else {
+        pthread_mutex_unlock(&(q->mtx));
+        return false;
+    }
+}
